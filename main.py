@@ -3,6 +3,7 @@ import json
 import time
 import pywinauto.application
 import _ctypes
+import os
 from threading import Thread
 from pypresence import Presence
 from datetime import timedelta
@@ -10,17 +11,17 @@ from win32gui import GetForegroundWindow
 from win32process import GetWindowThreadProcessId
 from config import *
 
-class Clock():
-    @staticmethod
-    def format_seconds(seconds):
-        td = timedelta(seconds=seconds)
-        hours, remainder = divmod(td.seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-
-        if hours == 0:
-            return '{:02}:{:02}'.format(int(minutes), int(seconds))
-        else:
-            return '{:02}:{:02}:{:02}'.format(int(hours), int(minutes), int(seconds))
+class Command(Thread):
+    def __init__(self, application):
+        Thread.__init__(self, daemon=True)
+        self.application = application
+    
+    def run(self):
+        while True:
+            self.user_input = input()
+            if self.user_input == "print(api.infos)":
+                print(self.application.infos)
+                os.system('cls' if os.name == 'nt' else 'clear')
 
 class ActiveTab(Thread):
     def __init__(self):
@@ -52,7 +53,7 @@ class ActiveTab(Thread):
                     
             except (pywinauto.findwindows.ElementNotFoundError, RuntimeError, IndexError, _ctypes.COMError) as e:
                 print(e.args)
-                self.active_tab = "Idling"
+                self.active_tab = "Idling"  
 
 class API(Thread):
     def __init__(self) -> None:
@@ -74,7 +75,7 @@ class API(Thread):
             time.sleep(10)
 
     def __str__(self):
-        return str(self.request.status_code)
+        return str(self.content)
 
 class Application():
     def __init__(self, ID) -> None:
@@ -86,23 +87,26 @@ class Application():
         self.active_tab = ActiveTab()
         self.active_tab.start()
 
-        self.seconds = 0
+        self.start_time = time.time()
+
+        self.command = Command(self)
+        self.command.start()
 
     def connect(self):
         self.RPC.connect()
 
     def update(self):
         try:
-            self.seconds += 1
             self.RPC.update(
                 details = "{} | Problems solved: {}".format(self.active_tab.active_tab, self.infos.content["totalSolved"]),
-                state = "{} elapsed".format(Clock.format_seconds(self.seconds)),
+                state = "Rank: {}".format(self.infos.content["ranking"]),
                 large_image = "leetcode_logo",
                 large_text = "LeetCode",
                 buttons = [
                     {"label": button_1_text, "url": button_1_url}, 
                     {"label": button_2_text, "url": button_2_url}
                 ],
+                start=self.start_time,
             )
         except KeyError as e:
             print(e.args)
@@ -110,7 +114,7 @@ class Application():
 def main():
     application = Application(application_ID)
     application.connect()
-
+    
     while True:
         time.sleep(1)
         application.update()
